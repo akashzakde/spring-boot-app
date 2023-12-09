@@ -1,129 +1,79 @@
-def COLOR_MAP = [
-    'SUCCESS': 'good',
-    'FAILURE': 'danger',
-]
-pipeline {
+pipeline{
     agent any
     tools{
-        maven "MVN"
-        jdk "JDK11"
-         }
-    environment {
-        AWS_DEFAULT_REGION = 'ap-south-1'
-        AWS_ACCESS_KEY_ID = credentials('awscreds')
-        AWS_SECRET_ACCESS_KEY = credentials('awscreds')
-        ECR_REGISTRY = '680247317246.dkr.ecr.ap-south-1.amazonaws.com/spring-petclinic'
-        DEV_ECS_CLUSTER = 'DevCluster'
-        DEV_SERVICE_NAME = 'Pet-Clinic-Dev-SVC'
-	PROD_ECS_CLUSTER = 'ProdCluster'
-	PROD_SERVICE_NAME = 'Pet-Clinic-Prod-SVC'
-	IMAGE_TAG = 'latest'
-                }
+        maven 'MVN'
+        jdk 'JDK11'
+        git 'git'
+    }
+    environment{
+        DOCKER_LOGIN_NAME = 'akashz'
+        DOCKER_PASSWORD = credentials('docker_token')
+        IMAGE_NAME = 'myapp'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
     stages{
-        stage('Fetch Code') {
-            steps {
-                git branch: 'main', credentialsId: 'github', url: 'git@github.com:akashzakde/spring-petclinic-cicd.git'
+        stage('Fetch Code'){
+            steps{
+                git branch: 'main', url: 'https://github.com/akashzakde/spring-boot-app.git'
             }
         }
-	stage('Code Analysis'){
+        stage('Code Analysis'){
             steps{
-                withSonarQubeEnv(credentialsId: 'sonar-login',installationName: 'sonar-server') {
-               sh '''mvn clean verify sonar:sonar \
-  -Dsonar.projectKey='PetClinic-3' \
-  -Dsonar.projectName='PetClinic-3' \
-  -Dsonar.host.url=http://172.31.37.229:9000 \
-  -Dsonar.token=sqp_a9a2a730f8e8a246f5b25eda32b5b3fb94b01ce3'''
-             }
-          }
-        }
-
-        stage('QualityGate Test') {
+                withSonarQubeEnv(credentialsId: 'sonarqube-creds',installationName: 'sonarqube') {
+                sh '''mvn clean verify sonar:sonar \
+                    -Dsonar.projectKey=Java-Project \
+                    -Dsonar.projectName='Java-Project' \
+                    -Dsonar.host.url=http://172.31.4.11:9000 \
+                    -Dsonar.token=sqp_156397e53f4007d40e1a790c9ffebbe0442cace1'''
+                    }
+                }
+            }
+        stage('QualityGate Result'){
             steps {
                     timeout(time: 1, unit: 'HOURS'){
                     waitForQualityGate abortPipeline: true
                     }
                 }
-
-        post {
-        success {
-            echo 'Static code analysis and quality gate passed.'
-        }
-        failure {
-            echo 'Static code analysis or quality gate failed. Please investigate and take appropriate action.'
-           }
-         }
-       }
+            }
         stage('Build Code'){
             steps{
-                sh 'mvn -s settings.xml clean -DskipTests package'
+                sh 'mvn clean -DskipTests package'
             }
         }
         stage('Test Code'){
             steps{
-                sh 'mvn -s settings.xml test'
+                sh 'mvn test'
             }
         }
-	stage('Login to ECR') {
-            steps {
-                script {
-                        sh "aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY"
-                    }
-                }
-            }
-        stage('Build Image') {
-            steps {
-                script {
-                    sh '''
-	   	docker build -t spring-petclinic .
-		docker tag spring-petclinic:latest "$ECR_REGISTRY:$IMAGE_TAG"
-		       '''	
-                }
+        stage('Docker Image Build'){
+            steps{
+                sh '''
+                    docker build -t $DOCKER_LOGIN_NAME/$IMAGE_NAME .
+                    docker tag $DOCKER_LOGIN_NAME/$IMAGE_NAME $DOCKER_LOGIN_NAME/$IMAGE_NAME:$IMAGE_TAG
+                    '''
             }
         }
-        stage('Push Image') {
-            steps {
-                script {
-                    sh "docker push $ECR_REGISTRY:$IMAGE_TAG"
-                }
+        stage('Push Image'){
+            steps{
+                sh '''
+                    docker login -u $DOCKER_LOGIN_NAME -p $DOCKER_PASSWORD
+                    docker push $DOCKER_LOGIN_NAME/$IMAGE_NAME:latest
+                    docker push $DOCKER_LOGIN_NAME/$IMAGE_NAME:$IMAGE_TAG
+                    '''
             }
         }
-
-        stage('Deploy To Stage Env') {
-            steps {
-                script {
-                    sh "aws ecs update-service --cluster $DEV_ECS_CLUSTER --service $DEV_SERVICE_NAME --force-new-deployment"
-                }
+        stage('Clean Images'){
+            steps{
+                sh '''
+                docker rmi $DOCKER_LOGIN_NAME/$IMAGE_NAME:latest
+                docker rmi $DOCKER_LOGIN_NAME/$IMAGE_NAME:$IMAGE_TAG
+                '''
             }
         }
-          stage('Manual Approval for Production Deployment') {
-            when {
-                expression {
-                    currentBuild.resultIsBetterOrEqualTo('SUCCESS')
-                }
-            }
-            steps {
-                // Added manual approval for Prod Deployment
-                timeout(activity: true, time: 1, unit: 'DAYS'){
-                input 'Have you done sanity check for deployment to production?'
-                }
+        stage('Trigger CD Pipeline'){
+            steps{
+                sh "curl -v -k --user admin:11bf95d3b7de2e69bb16e978e2825ac77c -X POST -H 'cache-control: no-cache' -H 'content_type: application/x-www-form-urlencoded' --data 'IMAGE_TAG=${IMAGE_TAG}' 'http://65.2.172.158:8080/job/Infra-CD-Pipeline/buildWithParameters?token=Jenkins-CD-Token'"
             }
         }
-
-	stage('Deploy to Prod') {
-            steps {
-                script {
-                    sh "aws ecs update-service --cluster $PROD_ECS_CLUSTER --service $PROD_SERVICE_NAME --force-new-deployment"
-                }
-            }
-        }  
     }
-       post{
-          always {
-              echo 'Slack Notifications'
-              slackSend channel: '#jenkinscicd',
-                  color: COLOR_MAP[currentBuild.currentResult],
-                  message: "*${currentBuild.currentResult}:* Job ${env.JOB_NAME} build ${env.BUILD_NUMBER} \n More info at: ${env.BUILD_URL}"
-             }
-          }
-
 }
