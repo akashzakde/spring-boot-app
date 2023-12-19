@@ -1,5 +1,5 @@
 
-# CICD Project with ArgoCD
+# CICD Project with ArgoCD ( Pull Based Deployment )
 
 This project is all about CICD pipeline with ArgoCD . We are going to create CICD project by simply hosting spring boot application on AWS EKS cluster . we will be following gitOps principle for our project where i have created 2 git repository  i.e, one for application code & another for kubernetes manifests files . 
 
