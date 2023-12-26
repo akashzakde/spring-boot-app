@@ -35,7 +35,7 @@ Step 1 : Login to AWS management console using our email id & password
 
 Step 2 : Create Security Group For jenkins & sonarqube server , Allow port 22 , 8080 in jenkins security group & allow 22 , 9000 in sonarqube security group .
 
-Step 3 : Create Key Pair 
+Step 3 : Create AWS security Key Pair 
 
 Step 4 : Launch two t2.medium EC2 instances (one for jenkins & another for sonarqube server).
 
