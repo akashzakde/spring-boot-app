@@ -73,7 +73,7 @@ pipeline{
         }
         stage('Trigger CD Pipeline'){
             steps{
-                sh "curl -v -k --user admin:$JADMIN_TOKEN -X POST -H 'cache-control: no-cache' -H 'content_type: application/x-www-form-urlencoded' --data 'IMAGE_TAG=${IMAGE_TAG}' 'http://172.31.43.75:8080/job/CD-Pipeline/buildWithParameters?token=Jenkins-CD-Token'"
+                sh "curl -v -k --user admin:$JADMIN_TOKEN -X POST -H 'cache-control: no-cache' -H 'content_type: application/x-www-form-urlencoded' --data 'IMAGE_TAG=${IMAGE_TAG}' 'http://172.31.43.75:8080/job/GitOps-CD-Pipeline/buildWithParameters?token=GitOps-CD-Token'"
             }
         }
     }
