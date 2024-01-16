@@ -2,7 +2,7 @@ pipeline{
     agent any
     tools{
         maven 'MVN'
-        jdk 'JDK11'
+        jdk 'JDK17'
         git 'git'
     }
     environment{
