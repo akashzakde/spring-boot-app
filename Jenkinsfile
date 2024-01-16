@@ -5,26 +5,27 @@ pipeline{
         jdk 'JDK17'
         git 'git'
     }
-    environment{
+    environment {
         DOCKER_LOGIN_NAME = 'akashz'
         DOCKER_PASSWORD = credentials('docker_token')
         IMAGE_NAME = 'myapp'
         IMAGE_TAG = "${BUILD_NUMBER}"
+        JADMIN_TOKEN = credentials('Jenkins_admin_token')
     }
     stages{
-        stage('Fetch Code'){
+        stage('Pull Code'){
             steps{
-                git branch: 'main', url: 'https://github.com/akashzakde/spring-boot-app.git'
+            // Clean before build
+            cleanWs()
+            git branch: 'main', url: 'https://github.com/akashzakde/spring-boot-app.git'
             }
         }
-        stage('Code Analysis'){
+         stage('Code Analysis'){
             steps{
                 withSonarQubeEnv(credentialsId: 'sonarqube-creds',installationName: 'sonarqube') {
                 sh '''mvn clean verify sonar:sonar \
-                    -Dsonar.projectKey=Java-Project \
-                    -Dsonar.projectName='Java-Project' \
-                    -Dsonar.host.url=http://172.31.4.11:9000 \
-                    -Dsonar.token=sqp_156397e53f4007d40e1a790c9ffebbe0442cace1'''
+                      -Dsonar.projectKey=gitops-project \
+                      -Dsonar.projectName='gitops-project' '''
                     }
                 }
             }
@@ -49,7 +50,7 @@ pipeline{
             steps{
                 sh '''
                     docker build -t $DOCKER_LOGIN_NAME/$IMAGE_NAME .
-                    docker tag $DOCKER_LOGIN_NAME/$IMAGE_NAME $DOCKER_LOGIN_NAME/$IMAGE_NAME:$IMAGE_TAG
+                    docker tag $DOCKER_LOGIN_NAME/$IMAGE_NAME $DOCKER_LOGIN_NAME/$IMAGE_NAME:V$IMAGE_TAG
                     '''
             }
         }
@@ -58,7 +59,7 @@ pipeline{
                 sh '''
                     docker login -u $DOCKER_LOGIN_NAME -p $DOCKER_PASSWORD
                     docker push $DOCKER_LOGIN_NAME/$IMAGE_NAME:latest
-                    docker push $DOCKER_LOGIN_NAME/$IMAGE_NAME:$IMAGE_TAG
+                    docker push $DOCKER_LOGIN_NAME/$IMAGE_NAME:V$IMAGE_TAG
                     '''
             }
         }
@@ -66,13 +67,13 @@ pipeline{
             steps{
                 sh '''
                 docker rmi $DOCKER_LOGIN_NAME/$IMAGE_NAME:latest
-                docker rmi $DOCKER_LOGIN_NAME/$IMAGE_NAME:$IMAGE_TAG
+                docker rmi $DOCKER_LOGIN_NAME/$IMAGE_NAME:V$IMAGE_TAG
                 '''
             }
         }
         stage('Trigger CD Pipeline'){
             steps{
-                sh "curl -v -k --user admin:11bf95d3b7de2e69bb16e978e2825ac77c -X POST -H 'cache-control: no-cache' -H 'content_type: application/x-www-form-urlencoded' --data 'IMAGE_TAG=${IMAGE_TAG}' 'http://65.2.172.158:8080/job/Infra-CD-Pipeline/buildWithParameters?token=Jenkins-CD-Token'"
+                sh "curl -v -k --user admin:$JADMIN_TOKEN -X POST -H 'cache-control: no-cache' -H 'content_type: application/x-www-form-urlencoded' --data 'IMAGE_TAG=${IMAGE_TAG}' 'http://172.31.43.75:8080/job/CD-Pipeline/buildWithParameters?token=Jenkins-CD-Token'"
             }
         }
     }
